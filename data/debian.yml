@@ -1,0 +1,6 @@
+---
+_galaxy_version:
+  latest: bullseye
+  bookworm: bookworm
+
+galaxy_version: "{{ _galaxy_version[tag] }}"

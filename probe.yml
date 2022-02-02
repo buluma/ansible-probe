@@ -1,0 +1,77 @@
+#!/usr/bin/env ansible-playbook
+- hosts: localhost
+  gather_facts: no
+
+  vars:
+    # Where to save the results.
+    ansible_probe_output_directory: ~/output
+
+  tasks:
+    - name: load data/combinations.yml
+      include_vars:
+        file: data/combinations.yml
+
+    - name: load data/image_galaxy_platform.yml
+      include_vars:
+        file: data/image_galaxy_platform.yml
+
+    - name: set role_path and role_name
+      set_fact:
+        role_path: "{{ lookup('env', 'PWD') }}"
+        role_name: "{{ lookup('env', 'PWD') | basename | regex_replace('ansible-role-') }}"
+
+    - name: test if molecule is installed
+      command: molecule --version
+      changed_when: no
+
+    - name: run molecule lint
+      command: molecule lint
+      args:
+        chdir: "{{ role_path }}"
+      changed_when: no
+
+    - name: make output_directory
+      file:
+        path: "{{ ansible_probe_output_directory }}/{{ role_name }}/fragments"
+        state: directory
+        recurse: yes
+
+    - name: write meta header aaa-meta.yml
+      lineinfile:
+        path: "{{ ansible_probe_output_directory }}/{{ role_name }}/fragments/aaa-meta.yml"
+        line: "  platforms:"
+        create: yes
+
+    - name: include image.yml
+      include_tasks: image.yml
+      loop: "{{ images }}"
+      loop_control:
+        loop_var: image
+
+    - name: assemble the separate meta files
+      assemble:
+        src: "{{ ansible_probe_output_directory }}/{{ role_name }}/fragments"
+        dest: "{{ ansible_probe_output_directory }}/{{ role_name }}/meta.yml"
+
+    - name: load generated meta.yml
+      slurp:
+        src: "{{ ansible_probe_output_directory }}/{{ role_name }}/meta.yml"
+      register: generated_meta
+
+    - name: load role meta.yml
+      slurp:
+        src: "{{ role_path }}/meta/main.yml"
+      register: role_meta
+
+    - name: decode role_meta
+      set_fact:
+        role_meta_decoded: "{{ role_meta['content'] | b64decode | from_yaml }}"
+
+    - name: decode generated_meta
+      set_fact:
+        generated_meta_decoded: "{{ generated_meta['content'] | b64decode }}"
+
+    # - name: write role meta.yml
+    #   template:
+    #     src: templates/meta.yml.j2
+    #     dest: "{{ role_path }}/meta/main.yml"

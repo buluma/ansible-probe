@@ -1,0 +1,57 @@
+---
+- name: see if {{ image.name }}:{{ tag }} is already done
+  lineinfile:
+    path: "{{ ansible_probe_output_directory }}/{{ role_name }}/done.txt"
+    line: "image={{ image.name }} tag={{ tag }}"
+    create: yes
+  check_mode: yes
+  register: ansible_probe_done
+
+- name: try molecule for {{ role_name }} with {{ image.name }}:{{ tag }}
+  when: ansible_probe_done is changed
+  block:
+    - name: run molecule for {{ role_name }} with {{ image.name }}:{{ tag }}
+      command: molecule test
+      args:
+        chdir: "{{ role_path }}"
+      environment:
+        image: "{{ image.name }}"
+        tag: "{{ tag }}"
+      register: ansible_probe_tag_run_molecule
+      no_log: yes
+
+    - name: load galaxy version mapping
+      include_vars:
+        file: data/{{ image.name }}.yml
+
+    - name: write {{ image.name }}-meta.yml
+      lineinfile:
+        path: "{{ ansible_probe_output_directory }}/{{ role_name }}/fragments/{{ image.name }}-meta.yml"
+        line: "{{ item }}"
+        create: yes
+      loop:
+        - "    - name: {{ galaxy_platform }}"
+        - "      versions:"
+        - "        - {{ galaxy_version }}"
+
+  rescue:
+    - name: molecule testing failed for {{ role_name }} with {{ image.name }}:{{ tag }}
+      debug:
+        msg: proceeding
+
+  always:
+    - name: save the results to {{ ansible_probe_output_directory }}/{{ role_name }}/done.txt
+      lineinfile:
+        path: "{{ ansible_probe_output_directory }}/{{ role_name }}/done.txt"
+        line: "image={{ image.name }} tag={{ tag }}"
+        create: yes
+
+    - name: save job output to {{ role_name }}/{{ image.name }}/{{ tag }}.txt
+      copy:
+        dest: "{{ ansible_probe_output_directory }}/{{ role_name }}/{{ image.name }}-{{ tag }}.txt"
+        content: "{{ ansible_probe_tag_run_molecule.stdout }}"
+
+    - name: save job error to {{ role_name }}/{{ image.name }}/{{ tag }}-stderr.txt
+      copy:
+        dest: "{{ ansible_probe_output_directory }}/{{ role_name }}/{{ image.name }}-{{ tag }}-stderr.txt"
+        content: "{{ ansible_probe_tag_run_molecule.stderr }}"

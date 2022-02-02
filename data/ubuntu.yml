@@ -1,0 +1,6 @@
+---
+_galaxy_version:
+  latest: focal
+  bionic: bionic
+
+galaxy_version: "{{ _galaxy_version[tag] }}"
